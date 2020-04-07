@@ -6,8 +6,9 @@ const ejs = require("ejs");
 const mongoose = require('mongoose');
 const encrypt = require("mongoose-encryption");
 const app = express();
-const md5 = require('md5'); //lvl 3 encrypt
-
+const md5 = require('md5'); //lvl 3 encryption
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 app.set('view engine', 'ejs');
 app.use(bodyParser.urlencoded({
@@ -60,16 +61,19 @@ app.get("/:routeName", function(req, res) {
 
 //========================{APP.POST pages route}=================================
 app.post("/register", function(req, res) {
-    const newUser = new User({
-        email: req.body.username,
-        password: md5(req.body.password)
-    });
-    newUser.save(function(err) {
-        if (err) {
-            console.log(err);
-        } else {
-            res.render("secrets");
-        }
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+        const newUser = new User({
+            email: req.body.username,
+            // password: md5(req.body.password)
+            password: hash
+        });
+        newUser.save(function(err) {
+            if (err) {
+                console.log(err);
+            } else {
+                res.render("secrets");
+            }
+        });
     });
 });
 
@@ -81,15 +85,14 @@ app.post("/login", function(req, res) {
             console.log(err);
         } else {
             if (foundUserEmail) {
-                if (foundUserEmail.password == inputPassword) {
-                    res.render("secrets", { user: foundUserEmail });
-                    // app.get("/secrets/:routeName", function(req, res){
-
-                    // }
-                } else {
-                    res.render("login", { warningClass: "invis-show warning" });
-
-                }
+                bcrypt.compare(inputPassword, foundUserEmail.password, function(err, result) {
+                    // res === true
+                    if (result == true) {
+                        res.render("secrets", { user: foundUserEmail });
+                    } else {
+                        res.render("login", { warningClass: "invis-show warning" });
+                    }
+                });
             }
         }
     });
