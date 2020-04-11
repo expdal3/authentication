@@ -14,7 +14,8 @@ const app = express();
 const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');
-
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 // const bcrypt = require('bcrypt');
 // const saltRounds = 10;
 
@@ -37,6 +38,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+
 //----------main code---------
 
 
@@ -51,10 +53,12 @@ mongoose.set('useCreateIndex', true);
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
+    googleId: String
 });
 
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 //{Encript the user database}
 // userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
 
@@ -63,8 +67,30 @@ const User = new mongoose.model("User", userSchema); //<--mongoose model
 // CHANGE: USE "createStrategy" INSTEAD OF "authenticate"
 passport.use(User.createStrategy());
 
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+passport.serializeUser(function(user, done) {
+    done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {
+    User.findById(id, function(err, user) {
+        done(err, user);
+    });
+});
+
+// {google OAuth use}
+passport.use(new GoogleStrategy({
+        clientID: process.env.CLIENT_ID,
+        clientSecret: process.env.CLIENT_SECRET,
+        callbackURL: "http://localhost:3000/auth/google/secrets",
+        userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+    },
+    function(accessToken, refreshToken, profile, cb) {
+        console.log(profile);
+        User.findOrCreate({ googleId: profile.id }, function(err, user) {
+            return cb(err, user);
+        });
+    }
+));
 //--------------------------------------------------+
 
 //========================{APP.GET pages route}=================================
@@ -81,26 +107,10 @@ app.get("/register", function(req, res) {
     res.render("register");
 });
 
-// app.get("/:routeName", function(req, res) {
-//     const requestedRoute = req.params.routeName;
-//     const root = req.params.routeName;
-
-//     switch (requestedRoute) {
-//         case "login":
-//             res.render("login", { warningClass: "invis-hidden" });
-//             break;
-//         case "register":
-//             res.render("register");
-//             break;
-//         default:
-//             break;
-//     }
-// });
-
 app.get("/secrets", function(req, res) {
     //  {Check if the user already login (authenticated), if yes, render the logined page, if not redirect
     //  to the login page}
-    console.log(req.isAuthenticated());
+    // console.log(req.isAuthenticated());
     if (req.isAuthenticated()) {
         res.render("secrets");
     } else {
@@ -116,6 +126,16 @@ app.get("/logout", function(req, res) {
 app.get("/submit", function(req, res) {
     res.render("submit");
 });
+
+app.get("/auth/google",
+    passport.authenticate("google", { scope: ['profile'] })
+);
+
+app.get("/auth/google/secrets", passport.authenticate('google', { failureRedirect: '/login' }),
+    function(req, res) {
+        // Successful authentication, redirect home.
+        res.redirect('/secrets');
+    });
 
 //========================{APP.POST pages route}=================================
 app.post("/register", function(req, res) {
@@ -156,3 +176,20 @@ app.post("/login", function(req, res) {
 app.listen(3000, function() {
     console.log("Server started on port 3000");
 });
+
+
+// app.get("/:routeName", function(req, res) {
+//     const requestedRoute = req.params.routeName;
+//     const root = req.params.routeName;
+
+//     switch (requestedRoute) {
+//         case "login":
+//             res.render("login", { warningClass: "invis-hidden" });
+//             break;
+//         case "register":
+//             res.render("register");
+//             break;
+//         default:
+//             break;
+//     }
+// });
